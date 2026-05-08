@@ -27,8 +27,9 @@ References:
 #include <math.h>          // Muito útil se for lidar com ângulos e trigonometria
 
 // Bibliotecas locais
-#include "lib_mpu6050/mpu6050/mpu6050.h" // Biblioteca do MPU6050
-#include "lib_mpu6050/i2chw/i2cmaster.h" // Biblioteca de I2C do Fleury
+#include "mpu6050.h" // Biblioteca do MPU6050
+#include "i2cmaster.h" // Biblioteca de I2C do Fleury
+#include "uart.h" // Biblioteca de UART para comunicação serial
 
 int main(){
 
