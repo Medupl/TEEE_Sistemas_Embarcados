@@ -21,8 +21,7 @@ CFLAGS = -Wall -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(INCLUDES)
 # Adicione aqui todos os arquivos .c que precisam ser compilados
 SRCS = main.c \
        ../lib_mpu6050/src/mpu6050/mpu6050.c \
-       ../lib_mpu6050/src/mpu6050/mpu6050dmp6.c \
-       ../lib_mpu6050/src/i2chw/twimaster.c \
+       ../lib_mpu6050/src/i2chw/twimastertimeout.c \
        ../lib_mpu6050/src/uart/uart.c
 
 # Transforma a lista de .c em .o (arquivos objeto)
