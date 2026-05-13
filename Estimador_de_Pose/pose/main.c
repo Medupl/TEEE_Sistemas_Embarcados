@@ -55,28 +55,48 @@ int main(){
   }
 
   // Declaração de variáveis para armazenar os dados do acelerômetro e giroscópio
-  int16_t ax, ay, az, gx, gy, gz;
-  char buffer[100];
+  int16_t ax_, ay_, az_, gx_, gy_, gz_;
+  int32_t pitch_g = 0, roll_g = 0, yaw_g = 0;
+  char buffer[200];
 
   while(1) {
 
     // Lê os dados brutos do MPU6050
-    mpu6050_getRawData(&ax, &ay, &az, &gx, &gy, &gz);
+    mpu6050_getRawData(&ax_, &ay_, &az_, &gx_, &gy_, &gz_);
 
     //Normalização acelerômetro:
-    ax = ((int32_t)ax * 100) / 16384;
-    ay = ((int32_t)ay * 100) / 16384;
-    az = ((int32_t)az * 100) / 16384;
+    // ax, ay, az estão em mili-g (1g = 1000 mg)
+    int32_t ax = ((int32_t)ax_ * 1000) / 16384;
+    int32_t ay = ((int32_t)ay_ * 1000) / 16384;
+    int32_t az = ((int32_t)az_ * 1000) / 16384;
 
     // Normalização giroscópio:
-    int32_t gx_ = ((int32_t)gx * 1000) / 164;
-    int32_t gy_ = ((int32_t)gy * 1000) / 164;
-    int32_t gz_ = ((int32_t)gz * 1000) / 164;
+    // gx, gy, gz estão em mili-graus por segundo (1°/s = 1000 mg/s)
+    int32_t gx = ((int32_t)gx_ * 10000) / 164;
+    int32_t gy = ((int32_t)gy_ * 10000) / 164;
+    int32_t gz = ((int32_t)gz_ * 10000) / 164;
 
     // Calcula os ângulos de inclinação usando os dados do acelerômetro.
-    float roll  = atan2(ay, sqrt((ax*ax) + (az*az))) * 180 / M_PI;
-    float pitch = atan2(ax, sqrt((ay*ay) + (az*az))) * 180 / M_PI;
-    float yaw   = 0;
+    // Roll, Pitch e Yaw estão em mili-graus (1g = 1000 mg)
+    int32_t roll  = atan2(ay, sqrt((ax*ax) + (az*az))) * 180000 / M_PI;
+    int32_t pitch = atan2(-ax, sqrt((ay*ay) + (az*az))) * 180000 / M_PI;
+    int32_t yaw   = 0;
+
+    // Calcula os ângulos de rotação usando os dados do giroscópio.
+    // pitch_g, roll_g e yaw_g estão em mili-graus (1°/s = 1000 mg/s)
+    pitch_g = pitch_g + gx / 10;
+    roll_g  = roll_g  + gy / 10;
+    yaw_g   = yaw_g   + gz / 10; 
+
+    sprintf(buffer, "Pitch_Acc: %ld.%03ld , Roll_Acc: %ld.%03ld , Yaw_Acc: %ld.%03ld "
+                    "| Pitch_Giro: %ld.%03ld, Roll_Giro: %ld.%03ld , Yaw_Giro: %ld.%03ld ,", 
+        pitch / 1000, labs(pitch % 1000), 
+        roll / 1000, labs(roll % 1000), 
+        yaw / 1000, labs(yaw % 1000),
+        pitch_g / 1000, labs(pitch_g % 1000),
+        roll_g / 1000, labs(roll_g % 1000),
+        yaw_g / 1000, labs(yaw_g % 1000));
+    uart_puts(buffer);
     
    _delay_ms(100);
   }
