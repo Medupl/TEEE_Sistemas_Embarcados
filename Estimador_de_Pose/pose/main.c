@@ -18,12 +18,14 @@ References:
  * @date 2026-05-06
  * @brief Main function
  */
+
 #define F_CPU 16000000UL        // Frequência do cristal (16 MHz)
 #define BAUD 9600               // Taxa de transmissão desejada (Baud Rate)
 
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <avr/interrupt.h>  // Para usar interrupções!
 #include <math.h>           // Muito útil se for lidar com ângulos e trigonometria
 
@@ -54,17 +56,29 @@ int main(){
 
   // Declaração de variáveis para armazenar os dados do acelerômetro e giroscópio
   int16_t ax, ay, az, gx, gy, gz;
-  char buffer[50];
+  char buffer[100];
 
   while(1) {
 
     // Lê os dados brutos do MPU6050
     mpu6050_getRawData(&ax, &ay, &az, &gx, &gy, &gz);
 
-    // Envia os dados lidos para o terminal serial
-    sprintf(buffer, "Accel: Ax:%d Ay:%d Az:%d | Gyro: Gx:%d Gy:%d Gz:%d\r\n", ax, ay, az, gx, gy, gz);
-    uart_puts(buffer);
-    _delay_ms(300);
+    //Normalização acelerômetro:
+    ax = ((int32_t)ax * 100) / 16384;
+    ay = ((int32_t)ay * 100) / 16384;
+    az = ((int32_t)az * 100) / 16384;
+
+    // Normalização giroscópio:
+    int32_t gx_ = ((int32_t)gx * 1000) / 164;
+    int32_t gy_ = ((int32_t)gy * 1000) / 164;
+    int32_t gz_ = ((int32_t)gz * 1000) / 164;
+
+    // Calcula os ângulos de inclinação usando os dados do acelerômetro.
+    float roll  = atan2(ay, sqrt((ax*ax) + (az*az))) * 180 / M_PI;
+    float pitch = atan2(ax, sqrt((ay*ay) + (az*az))) * 180 / M_PI;
+    float yaw   = 0;
+    
+   _delay_ms(100);
   }
 
     return 0;
