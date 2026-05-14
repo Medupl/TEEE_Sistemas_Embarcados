@@ -76,6 +76,7 @@ int main(){
   SSD1306_ClearScreen();
   SSD1306_SetPosition(0, 0);
   SSD1306_DrawString("Calibrando...");
+  SSD1306_UpdateScreen(SSD1306_ADDR);
 
   // Declaração de variáveis para armazenar os dados do acelerômetro e giroscópio
   int16_t ax_, ay_, az_, gx_, gy_, gz_;
@@ -119,13 +120,14 @@ int main(){
 
       // Usando a logica dos links mandado pelo professor, fazemos:
       // Encontrando o valor do filtro complementar para cada ângulo.
-      int32_t alpha = 90;  // Fator de filtro complementar (ajuste conforme necessário)
-      pitch = (alpha * (pitch + gx / 10) + (100 - alpha) * pitch_a) / 100;
-      roll  = (alpha * (roll  + gy / 10) + (100 - alpha) * roll_a)  / 100;
+      int32_t alpha  = 90;  // Fator de filtro complementar (ajuste conforme necessário)
+      int8_t fator_g = 2 ;  // Fator de escala para compensar o delay. 
+      pitch = (alpha * (pitch + gx / (10 - fator_g)) + (100 - alpha) * pitch_a) / 100;
+      roll  = (alpha * (roll  + gy / (10 - fator_g)) + (100 - alpha) * roll_a)  / 100;
       //yaw   = (alpha * (yaw   + gz / 100) + (100 - alpha) * yaw_a)   / 100;
       // Yaw com zona morta para reduzir drift
       int32_t gz_filtrado = (gz > 500 || gz < -500) ? gz : 0;
-      yaw = yaw + gz_filtrado / 10 + yaw_a;
+      yaw = yaw + gz_filtrado / (10 - fator_g) + yaw_a;
 
       // Exibe os ângulos no Serial Monitor
       sprintf(buffer, "Ac: X:%ld.%1ld Y:%ld.%1ld Z:%ld.%1ld | "
