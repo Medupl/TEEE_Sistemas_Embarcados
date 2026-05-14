@@ -10,7 +10,7 @@ AVRDUDE = avrdude
 
 # --- Pastas de Inclusão (Onde o compilador vai procurar os .h) ---
 # O -I avisa o compilador onde estão os cabeçalhos
-INCLUDES = -I. -I../lib_mpu6050/src/mpu6050 -I../lib_mpu6050/src/i2chw -I../lib_mpu6050/src/uart
+INCLUDES = -I. -I../lib_mpu6050/src/mpu6050 -I../lib_mpu6050/src/i2chw -I../lib_mpu6050/src/uart -I../display
 
 # --- Flags de Compilação ---
 # -Os otimiza para tamanho (essencial para AVR)
@@ -22,7 +22,9 @@ CFLAGS = -Wall -Os -mmcu=$(MCU) -DF_CPU=$(F_CPU) $(INCLUDES)
 SRCS = main.c \
        ../lib_mpu6050/src/mpu6050/mpu6050.c \
        ../lib_mpu6050/src/i2chw/twimastertimeout.c \
-       ../lib_mpu6050/src/uart/uart.c
+       ../lib_mpu6050/src/uart/uart.c \
+       ../display/ssd1306.c \
+       ../display/twi.c
 
 # Transforma a lista de .c em .o (arquivos objeto)
 OBJS = $(SRCS:.c=.o)

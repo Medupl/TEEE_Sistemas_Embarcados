@@ -33,16 +33,35 @@ References:
 #include "mpu6050.h"        // Biblioteca do MPU6050
 #include "i2cmaster.h"      // Biblioteca de I2C do Fleury
 #include "uart.h"           // Biblioteca de UART para comunicação serial
+#include "ssd1306.h"        // Biblioteca para LCD
+
+volatile uint8_t flag_100ms = 0;
+
+void setup_timer1(void) {
+    TCCR1B |= (1 << WGM12);           // Modo CTC
+    TIMSK1 |= (1 << OCIE1A);          // Habilita interrupção por comparação
+
+    // F_CPU (16MHz) / Prescaler (1024) = 15.625 pulsos por segundo
+    // Para 10Hz (100ms): 15.625 / 10 = 1562.5
+    OCR1A = 1562;
+    TCCR1B |= (1 << CS12) | (1 << CS10);
+}
+
+ISR(TIMER1_COMPA_vect) {
+    flag_100ms = 1; 
+}
 
 int main(){
 
-  // Inicializa a UART para comunicação serial.
-  uart_init(UART_BAUD_SELECT(BAUD, F_CPU));
-  sei(); 
-
   // Inicializa o MPU6050
   mpu6050_init();
+  SSD1306_Init(SSD1306_ADDR);
   _delay_ms(500); 
+
+  // Inicializa a UART para comunicação serial.
+  uart_init(UART_BAUD_SELECT(BAUD, F_CPU));
+  setup_timer1();
+  sei(); 
 
   uart_puts("Iniciando Teste de comunicacao...\r\n");
 
@@ -54,51 +73,99 @@ int main(){
       while(1);
   }
 
+  SSD1306_ClearScreen();
+  SSD1306_SetPosition(0, 0);
+  SSD1306_DrawString("Calibrando...");
+
   // Declaração de variáveis para armazenar os dados do acelerômetro e giroscópio
   int16_t ax_, ay_, az_, gx_, gy_, gz_;
-  int32_t pitch_g = 0, roll_g = 0, yaw_g = 0;
-  char buffer[200];
+  int32_t pitch = 0, roll = 0, yaw = 0;
+  char buffer[120];
+  char linha[22];
+
+  //Calibração inicial do giroscópio para obter o offset do eixo Z
+  int32_t gx_off = 0, gy_off = 0, gz_off = 0;
+  for(int i=0; i<500; i++) {
+      mpu6050_getRawData(&ax_, &ay_, &az_, &gx_, &gy_, &gz_);
+      gx_off += gx_; gy_off += gy_; gz_off += gz_;
+      _delay_ms(2);
+  }
+  gx_off /= 500; gy_off /= 500; gz_off /= 500;
 
   while(1) {
+    if (flag_100ms) {
+      
+      flag_100ms = 0;
+      // Lê os dados brutos do MPU6050
+      mpu6050_getRawData(&ax_, &ay_, &az_, &gx_, &gy_, &gz_);
 
-    // Lê os dados brutos do MPU6050
-    mpu6050_getRawData(&ax_, &ay_, &az_, &gx_, &gy_, &gz_);
+      //Normalização acelerômetro:
+      // ax, ay, az estão em mili-g (1g = 1000 mg)
+      int32_t ax = ((int32_t)ax_ * 1000) / 16384;
+      int32_t ay = ((int32_t)ay_ * 1000) / 16384;
+      int32_t az = ((int32_t)az_ * 1000) / 16384;
 
-    //Normalização acelerômetro:
-    // ax, ay, az estão em mili-g (1g = 1000 mg)
-    int32_t ax = ((int32_t)ax_ * 1000) / 16384;
-    int32_t ay = ((int32_t)ay_ * 1000) / 16384;
-    int32_t az = ((int32_t)az_ * 1000) / 16384;
+      // Normalização giroscópio:
+      // gx, gy, gz estão em mili-graus por segundo (1°/s = 1000 mg/s)
+      int32_t gx = ((int32_t)(gx_ - gx_off) * 10000) / 164; 
+      int32_t gy = ((int32_t)(gy_ - gy_off) * 10000) / 164;
+      int32_t gz = ((int32_t)(gz_ - gz_off) * 10000) / 164;
 
-    // Normalização giroscópio:
-    // gx, gy, gz estão em mili-graus por segundo (1°/s = 1000 mg/s)
-    int32_t gx = ((int32_t)gx_ * 10000) / 164;
-    int32_t gy = ((int32_t)gy_ * 10000) / 164;
-    int32_t gz = ((int32_t)gz_ * 10000) / 164;
+      // Calcula os ângulos de inclinação usando os dados do acelerômetro.
+      // Roll, Pitch e Yaw estão em mili-graus (1g = 1000 mg)
+      int32_t roll_a  = atan2(ay, sqrt((ax*ax) + (az*az))) * 180000 / M_PI;
+      int32_t pitch_a = atan2(-ax, sqrt((ay*ay) + (az*az))) * 180000 / M_PI;
+      int32_t yaw_a   = 0;
 
-    // Calcula os ângulos de inclinação usando os dados do acelerômetro.
-    // Roll, Pitch e Yaw estão em mili-graus (1g = 1000 mg)
-    int32_t roll  = atan2(ay, sqrt((ax*ax) + (az*az))) * 180000 / M_PI;
-    int32_t pitch = atan2(-ax, sqrt((ay*ay) + (az*az))) * 180000 / M_PI;
-    int32_t yaw   = 0;
+      // Usando a logica dos links mandado pelo professor, fazemos:
+      // Encontrando o valor do filtro complementar para cada ângulo.
+      int32_t alpha = 90;  // Fator de filtro complementar (ajuste conforme necessário)
+      pitch = (alpha * (pitch + gx / 10) + (100 - alpha) * pitch_a) / 100;
+      roll  = (alpha * (roll  + gy / 10) + (100 - alpha) * roll_a)  / 100;
+      //yaw   = (alpha * (yaw   + gz / 100) + (100 - alpha) * yaw_a)   / 100;
+      // Yaw com zona morta para reduzir drift
+      int32_t gz_filtrado = (gz > 500 || gz < -500) ? gz : 0;
+      yaw = yaw + gz_filtrado / 10 + yaw_a;
 
-    // Calcula os ângulos de rotação usando os dados do giroscópio.
-    // pitch_g, roll_g e yaw_g estão em mili-graus (1°/s = 1000 mg/s)
-    pitch_g = pitch_g + gx / 10;
-    roll_g  = roll_g  + gy / 10;
-    yaw_g   = yaw_g   + gz / 10; 
+      // Exibe os ângulos no Serial Monitor
+      sprintf(buffer, "Ac: X:%ld.%1ld Y:%ld.%1ld Z:%ld.%1ld | "
+                      "Giro: X:%ld.%1ld Y:%ld.%1ld Z:%ld.%1ld | "
+                      "Euler: P:%ld.%1ld R:%ld.%1ld Y:%ld.%1ld\r\n", 
+                      // Aceleração
+                      ax/1000, labs(ax%1000)/100,
+                      ay/1000, labs(ay%1000)/100,
+                      az/1000, labs(az%1000)/100,
+                      // Velocidade angular
+                      gx/1000, labs(gx%1000)/100,
+                      gy/1000, labs(gy%1000)/100,
+                      gz/1000, labs(gz%1000)/100,
+                      // Ângulos de Euler
+                      pitch/1000, labs(pitch%1000)/100,
+                      roll/1000,  labs(roll%1000) /100,
+                      yaw/1000,   labs(yaw%1000)  /100);
 
-    sprintf(buffer, "Pitch_Acc: %ld.%03ld , Roll_Acc: %ld.%03ld , Yaw_Acc: %ld.%03ld "
-                    "| Pitch_Giro: %ld.%03ld, Roll_Giro: %ld.%03ld , Yaw_Giro: %ld.%03ld ,", 
-        pitch / 1000, labs(pitch % 1000), 
-        roll / 1000, labs(roll % 1000), 
-        yaw / 1000, labs(yaw % 1000),
-        pitch_g / 1000, labs(pitch_g % 1000),
-        roll_g / 1000, labs(roll_g % 1000),
-        yaw_g / 1000, labs(yaw_g % 1000));
-    uart_puts(buffer);
-    
-   _delay_ms(100);
+      uart_puts(buffer);
+
+      // 7. Atualiza display
+      SSD1306_ClearScreen();
+      SSD1306_SetPosition(0, 0);
+      sprintf(linha, "P:%ld.%1ld",
+          pitch/1000, labs(pitch%1000)/100);
+      SSD1306_DrawString(linha);
+
+      SSD1306_SetPosition(0, 2);
+      sprintf(linha, "R:%ld.%1ld",
+          roll/1000, labs(roll%1000)/100);
+      SSD1306_DrawString(linha);
+
+      SSD1306_SetPosition(0, 4);
+      sprintf(linha, "Y:%ld.%1ld",
+          yaw/1000, labs(yaw%1000)/100);
+      SSD1306_DrawString(linha);
+
+      SSD1306_UpdateScreen(SSD1306_ADDR);
+
+    }
   }
 
     return 0;
